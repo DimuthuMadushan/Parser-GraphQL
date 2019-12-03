@@ -2,11 +2,8 @@ type Node abstract object {
 };
 
 type Document object {
-    // Node definition;
-    // function __init(Node def) {
-    //     self.definition = def;
-    // }
 };
+
 type FragmentDefinition object {
     string nodeType = "FragmentDefinition";
     string fragmentName;
@@ -32,8 +29,7 @@ type OperationDefinition object {
     VariableDefinition? variableDefinition;
     Directives? directives = ();
     SelectionSet[] selectionSet;
-    //anydata lexline;
-    function __init(string opType, SelectionSet[] selSet, string? name, VariableDefinition? varDef,Directives? dir) {
+    function __init(string opType, SelectionSet[] selSet, string? name, VariableDefinition? varDef, Directives? dir) {
         self.operationType = opType;
         self.name = name;
         self.variableDefinition = varDef;
@@ -57,7 +53,7 @@ type Field object {
     map<Arguments>? argument;
     Directives? directives;
     SelectionSet[]? selectionSet;
-    function __init(string name, string? als, map<Arguments>? args, SelectionSet[]? selSet, string[]? fields,Directives? dir) {
+    function __init(string name, string? als, map<Arguments>? args, SelectionSet[]? selSet, string[]? fields, Directives? dir) {
         self.alias = als;
         self.name = name;
         self.argument = args;
@@ -88,6 +84,7 @@ type InlineFragment object {
         self.selectionSet = selSet;
     }
 };
+
 type Directives object {
     string name;
     Arguments arguments;
@@ -117,19 +114,19 @@ type Arguments object {
     }
 };
 
-type Value object {
-    any value;
-    string name;
-    function __init(string name, any val) {
-        self.name = name;
-        self.value = val;
-    }
-};
-
 type Variable object {
     string name;
     function __init(string name) {
         self.name = name;
+    }
+};
+
+type Value object {
+    string value;
+    string name;
+    function __init(string name, string val) {
+        self.name = name;
+        self.value = val;
     }
 };
 
@@ -141,6 +138,7 @@ type IntValue object {
         self.value = val;
     }
 };
+
 type FloatValue object {
     string value;
     string name;
@@ -149,6 +147,7 @@ type FloatValue object {
         self.value = val;
     }
 };
+
 type StringValue object {
     string value;
     string name;
@@ -157,6 +156,7 @@ type StringValue object {
         self.value = val;
     }
 };
+
 type BooleanValue object {
     string value;
     string name;
@@ -165,37 +165,42 @@ type BooleanValue object {
         self.value = val;
     }
 };
+
 type EnumValue object {
     string name;
-    any value;
-    function __init(string name, any val) {
+    string value;
+    function __init(string name, string val) {
         self.name = name;
         self.value = val;
     }
 };
+
 type NullValue object {
-    any value;
+    string value;
     string name;
     function __init() {
         self.name = "";
         self.value = "";
     }
 };
-type UserInputValue object{
-    string Type;
+
+type ListValue object {
+    Value value;
+    function __init(Value val) {
+        self.value = val;
+    }
+
+};
+
+type ObjectValue object {
     string name;
-    any value="";
-     function __init(string name,string tp) {
+    Value value;
+    function __init(string name = "", Value val = new Value("", "")) {
         self.name = name;
-        self.Type = tp;
+        self.value = val;
     }
 };
-type ListValue object {
 
-};
-type ObjectValue object {
-
-};
 
 
 
