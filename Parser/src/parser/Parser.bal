@@ -353,15 +353,6 @@ type Parser object {
         }
     }
 
-    // function getToken("tokenType") returns string {
-    //     if (self.look.hasKey("token")) {
-    //         return <string>self.getToken("tokenType");
-    //     } else {
-    //         string msg = io:sprintf("%s near line %d %d", "syntax error", self.previousToken.get("lineNum"), self.previousToken.get("columnNum"));
-    //         panic error("Syntax Error", massage = msg);
-    //     }
-    // }
-
     function matchToken(string tok) {
         if (self.look.hasKey("token")) {
             if (self.getToken("token") == tok) {
