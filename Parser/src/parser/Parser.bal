@@ -3,12 +3,22 @@ import ballerina/io;
 type Parser object {
     private
     record {} look;
+    record {} previousToken;
     map<VariableDefinition> variableDefMap;
     map<FragmentDefinition> fragmentsDefMap;
     function __init() {
         self.look = scan();
         self.variableDefMap = {};
         self.fragmentsDefMap = {};
+        self.previousToken = self.look;
+    }
+
+    function getLineNumber() returns [int, int] {
+        [int, int] location = [<int>self.look.get("lineNum"), <int>self.look.get("columnNum")];
+        int lineNumber;
+        int columnNumber;
+        [lineNumber, columnNumber] = location;
+        return [lineNumber, columnNumber];
     }
 
     function document() {
@@ -40,11 +50,14 @@ type Parser object {
                 VariableDefinition variableDefinition = new VariableDefinition("", "", new NullValue());
                 Directives? directives = ();
                 SelectionSet[] selectionSet = [];
-                selectionSet.push(self.selectionSet());
-                self.matchToken("}");
-                io:println("Parsing successful. No Syntax Errors");
-                return new OperationDefinition(operationType, selectionSet, name, variableDefinition, directives);
-
+                selectionSet = self.selectionSet();
+                if (!self.look.hasKey("token")) {
+                    io:println("Parsing successful. No Syntax Errors");
+                    return new OperationDefinition(operationType, selectionSet, name, variableDefinition, directives);
+                } else {
+                    string msg = io:sprintf("%s near line %d,%d", "syntax error", self.look.get("lineNum"), self.look.get("columnNum"));
+                    panic error("Syntax Error", massage = msg);
+                }
             }
             _ => {
                 string msg = io:sprintf("%s near line %d,%d", "syntax error", self.look.get("lineNum"), self.look.get("columnNum"));
@@ -67,14 +80,12 @@ type Parser object {
         self.matchTokenType("Name");
         if (<string>self.look.get("token") == "@") {
             directives = self.directives();
-            selectionSet.push(self.selectionSet());
-            self.matchToken("}");
+            selectionSet = self.selectionSet();
             FragmentDefinition fd = new FragmentDefinition(fragmentName, typeCondition, directives, selectionSet);
             self.fragmentsDefMap[fragmentName] = fd;
             return self.executableDefinition();
         } else {
-            selectionSet.push(self.selectionSet());
-            self.matchToken("}");
+            selectionSet = self.selectionSet();
             FragmentDefinition fd = new FragmentDefinition(fragmentName, typeCondition, directives, selectionSet);
             self.fragmentsDefMap[fragmentName] = fd;
             return self.executableDefinition();
@@ -93,43 +104,44 @@ type Parser object {
         string variable;
         string typeName;
         Value defaultValue;
-        while (true) {
-            if (self.look.get("tokenType") == "Name") {
-                name = <string>self.look.get("token");
+        if (self.look.get("tokenType") == "Name") {
+            name = <string>self.look.get("token");
+            self.move();
+        }
+        if (self.isLookahead("(")) {
+            self.move();
+            while (self.isLookahead("$")) {
+                self.matchToken("$");
+                variable = <string>self.look.get("token");
                 self.move();
-            }
-            else if (self.isLookahead("(")) {
-                self.move();
-                while (self.isLookahead("$")) {
-                    self.matchToken("$");
-                    variable = <string>self.look.get("token");
-                    self.move();
-                    self.matchToken(":");
-                    typeName = self.getTypeOfVar(<string>self.look.get("token"));
-                    defaultValue = new NullValue();
-                    if (self.isLookahead("=")) {
-                        defaultValue = self.getValue(variable);
-                    }
-                    variableDefinition = new VariableDefinition(variable, typeName, defaultValue);
-                    self.variableDefMap[variable] = variableDefinition;
+                self.matchToken(":");
+                typeName = self.getTypeOfVar(<string>self.look.get("token"));
+                defaultValue = new NullValue();
+                if (self.isLookahead("=")) {
+                    defaultValue = self.getValue(variable);
                 }
-                self.matchToken(")");
-            } else if (<string>self.look.get("token") == "@") {
-                directives = self.directives();
-            } else {
-                break;
+                variableDefinition = new VariableDefinition(variable, typeName, defaultValue);
+                self.variableDefMap[variable] = variableDefinition;
             }
+            self.matchToken(")");
+        }
+        if (<string>self.look.get("token") == "@") {
+            directives = self.directives();
         }
         if (self.isLookahead("{")) {
-            selectionSet.push(self.selectionSet());
-            self.matchToken("}");
+            selectionSet = self.selectionSet();
+        }
+        else {
+            string msg = io:sprintf("%s near line %d,%d", "syntax error", self.look.get("lineNum"), self.look.get("columnNum"));
+            panic error("Syntax Error", massage = msg);
+        }
+        if (!self.look.hasKey("token")) {
+            io:println("Parsing successful. No Syntax Errors");
+            return new OperationDefinition(operationType, selectionSet, name, variableDefinition, directives);
         } else {
             string msg = io:sprintf("%s near line %d,%d", "syntax error", self.look.get("lineNum"), self.look.get("columnNum"));
             panic error("Syntax Error", massage = msg);
         }
-        io:println("Parsing successful. No Syntax Errors");
-        return new OperationDefinition(operationType, selectionSet, name, variableDefinition, directives);
-
     }
 
     function directives() returns Directives {
@@ -169,20 +181,28 @@ type Parser object {
         }
     }
 
-    function selectionSet() returns @tainted (Field | FragmentSpread | InlineFragment) {
+    function selectionSet() returns @tainted SelectionSet[] {
+        SelectionSet[] selSet = [];
+        int i = 0;
         self.move();
-        if (self.look.get("tokenType") == "Name") {
-            return self.field();
-        } else if (self.isLookahead("...")) {
-            return self.fragmentInlineAndSpread();
-        } else {
-            io:println(self.look.get("token"));
-            string msg = io:sprintf("%s near line %d,%d", "syntax error", self.look.get("lineNum"), self.look.get("columnNum"));
-            panic error("Syntax Error", massage = msg);
+        while (true) {
+            i += 1;
+            if (self.getTokenType() == "Name") {
+                selSet.push(self.field());
+            } else if (self.isLookahead("...")) {
+                selSet.push(self.fragmentInlineAndSpread());
+            } else if (self.isLookahead("}") && (i != 1)) {
+                self.move();
+                break;
+            } else {
+                string msg = io:sprintf("%s near line %d,%d", "syntax error", self.look.get("lineNum"), self.look.get("columnNum"));
+                panic error("Syntax Error", massage = msg);
+            }
         }
+        return selSet;
     }
 
-    function field() returns Field {
+    function field() returns @tainted Field {
         string? alias = "";
         string name;
         string[] fields = [];
@@ -190,22 +210,21 @@ type Parser object {
         Directives? directives = ();
         SelectionSet[] selSet = [];
         name = <string>self.look.get("token");
-        self.move();
-        while (true) {
+        Value defaultValue;
+        if (self.look.get("tokenType") == "Name") {
+            name = <string>self.look.get("token");
+            self.move();
             if (self.isLookahead(":")) {
                 alias = name;
                 self.move();
                 name = <string>self.look.get("token");
                 self.move();
-                fields.push(name);
-            } else if (self.isLookahead("{")) {
-                selSet.push(self.selectionSet());
-                self.matchToken("}");
-            } else if (<string>self.look.get("tokenType") == "Name") {
-                fields.push(name);
-                self.move();
-            } else if (self.isLookahead("(")) {
-                self.move();
+            }
+            fields.push(name);
+        }
+        if (self.isLookahead("(")) {
+            self.move();
+            if (self.look.get("tokenType") == "Name") {
                 string variable = <string>self.look.get("token");
                 while (self.look.get("tokenType") == "Name") {
                     self.matchTokenType("Name");
@@ -251,23 +270,18 @@ type Parser object {
                     }
                 }
                 self.matchToken(")");
-            } else if (self.isLookahead("@")) {
-                directives = self.directives();
-            } else if (self.isLookahead("{")) {
-                selSet.push(self.selectionSet());
-                self.matchToken("}");
-            } else if (self.isLookahead("...")) {
-                selSet.push(self.fragmentInlineAndSpread());
-            } else {
-                fields.push(name);
-                break;
             }
-
+        }
+        if (self.isLookahead("@")) {
+            directives = self.directives();
+        }
+        if (self.isLookahead("{")) {
+            selSet = self.selectionSet();
         }
         return new Field(name, alias, arguments, selSet, fields, directives);
     }
 
-    function fragmentInlineAndSpread() returns (InlineFragment | FragmentSpread) {
+    function fragmentInlineAndSpread() returns @tainted (InlineFragment | FragmentSpread) {
         string? typeCondition = "";
         Directives? directives = ();
         string fragmentName;
@@ -286,8 +300,7 @@ type Parser object {
                 }
             }
             if (<string>self.look.get("token") == "{") {
-                selSet.push(self.selectionSet());
-                self.matchToken("}");
+                selSet = self.selectionSet();
             } else {
                 string msg = io:sprintf("%s found near line %d,%d", "Undefined Variable", self.look.get("lineNum"), self.look.get("columnNum"));
                 panic error("Syntax Error", massage = msg);
@@ -306,8 +319,7 @@ type Parser object {
                 }
             }
             self.matchToken("{");
-            selSet.push(self.selectionSet());
-            self.matchToken("}");
+            selSet = self.selectionSet();
             return new InlineFragment(typeCondition, directives, selSet);
         } else if (<string>self.look.get("tokenType") == "Name") {
             fragmentName = <string>self.look.get("token");
@@ -328,7 +340,26 @@ type Parser object {
     }
 
     function move() {
+        self.previousToken = self.look;
         self.look = scan();
+    }
+
+    function getToken() returns anydata {
+        if (self.look.hasKey("token")) {
+            return self.look.get("token");
+        } else {
+            string msg = io:sprintf("%s near line %d %d", "syntax error", self.previousToken.get("lineNum"), self.previousToken.get("columnNum"));
+            panic error("Syntax Error", massage = msg);
+        }
+    }
+
+    function getTokenType() returns string {
+        if (self.look.hasKey("token")) {
+            return <string>self.look.get("tokenType");
+        } else {
+            string msg = io:sprintf("%s near line %d %d", "syntax error", self.previousToken.get("lineNum"), self.previousToken.get("columnNum"));
+            panic error("Syntax Error", massage = msg);
+        }
     }
 
     function matchToken(string tok) {
@@ -340,16 +371,21 @@ type Parser object {
                 panic error("Syntax Error", massage = msg);
             }
         } else {
-            string msg = io:sprintf("missing punctuation");
+            string msg = io:sprintf("%s near line %d %d", "syntax error", self.previousToken.get("lineNum"), self.previousToken.get("columnNum"));
             panic error("Syntax Error", massage = msg);
         }
     }
 
     function matchTokenType(string tokType) {
-        if (<string>self.look.get("tokenType") == tokType) {
-            self.move();
+        if (self.look.hasKey("tokenType")) {
+            if (<string>self.look.get("tokenType") == tokType) {
+                self.move();
+            } else {
+                string msg = io:sprintf("%s near line %d,%d", "syntax error", self.look.get("lineNum"), self.look.get("columnNum"));
+                panic error("Syntax Error", massage = msg);
+            }
         } else {
-            string msg = io:sprintf("%s near line %d,%d", "syntax error", self.look.get("lineNum"), self.look.get("columnNum"));
+            string msg = io:sprintf("%s near line %d %d", "syntax error", self.previousToken.get("lineNum"), self.previousToken.get("columnNum"));
             panic error("Syntax Error", massage = msg);
         }
     }
@@ -362,7 +398,7 @@ type Parser object {
                 return false;
             }
         } else {
-            string msg = io:sprintf("missing punctuation");
+            string msg = io:sprintf("%s near line %d %d", "syntax error", self.previousToken.get("lineNum"), self.previousToken.get("columnNum"));
             panic error("Syntax Error", massage = msg);
         }
     }

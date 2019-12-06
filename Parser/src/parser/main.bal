@@ -1,18 +1,18 @@
 public function main() {
     string selectionSet = "{
-                        me {
-                            id
-                            firstName
-                            lastName
-                            birthday {
-                            month
-                            day
-                            }
-                            friends {
-                            name
-                            }
-                        }
-                        }";
+                            me {
+                                    id
+                                    firstName
+                                    lastName
+                                    birthday {
+                                    month
+                                    day
+                                }
+                                friends {
+                                name
+                                }
+                            
+                            }";
 
     string inlinefragment = "query inlineFragmentTyping {
                                             profiles(handles: [zuck, cocacola]) {
@@ -46,7 +46,7 @@ public function main() {
                             }
                         }
                         ";
-    table<Token> | string t = getTokens(selectionSet);
+    table<Token> | string t = getTokens(inlinefragment);
 
     Parser parser = new Parser();
     parser.document();

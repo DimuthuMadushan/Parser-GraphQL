@@ -82,13 +82,17 @@ function getError(int[] newLineIndexes, string token, int tokenIndex) returns st
         if (newLineIndexes[lineNum - 1] < tokenIndex) {
             lineNum += 1;
         } else {
-            columnNum = tokenIndex - newLineIndexes[lineNum - 2];
-            break;
+            if(lineNum==1){
+                columnNum = tokenIndex;
+                break;
+            }else{
+                columnNum = tokenIndex - newLineIndexes[lineNum - 2];
+                break;
+            }
         }
     }
     string err = io:sprintf("error:.::Unexpected token \"%s\" found at (%s,%s)", token, lineNum, columnNum);
-    io:println(err);
-    return err;
+    panic error("Undefined Variable", massage = err);
 }
 
 function getPunctuationTokens(table<Token> tokenTable, string[] charList, int[] newLineIndexes) returns ([table<Token>, string[], int[]]) {
